@@ -4,49 +4,74 @@ import datetime
 import sys
 
 
-def get_title_and_links(link):
+def dump_to_file(url, content, file):
+    f = open(file, 'a')
+    f.write('{}:::{}:::{}\n'.format(url,content[0],content[1]))
+    f.close
 
-    page = urllib.request.urlopen(link)
-    soup = BeautifulSoup(page.read(), 'html.parser')
-    if soup == None:
-        return
+def read_cache(file):
+    f = open(file,'r')
+    url_title_dict = {}
+    url_links_dict = {}
+    for line in f.readlines():
+        key = line.split(':::')[0]
+        title_value = line.split(':::')[1]
+        links_string = line.split(':::')[2]
+        links_value = links_string[2:(len(links_string)-3)].split('\', \'')
+        url_title_dict[key] = title_value
+        url_links_dict[key] = links_value
+    return url_title_dict, url_links_dict
 
-    title = soup.find('h1').get_text()
-
-    body_content = soup.find(attrs={'class': 'mw-parser-output'})
-    list_of_links = []
-    for link in body_content.find_all('a'):
-        potential_link = link.get('href')
-        if link.get('title') != None and '/wiki/' in potential_link and 'http' not in potential_link and ':' not in potential_link:
-            url = str('https://en.wikipedia.org' + potential_link)
-            if url not in list_of_links:
-                list_of_links.append(url)
+def get_title_and_links(url):
+    url_title_dict, url_links_dict = read_cache('wikipedia_storage.txt')
+    if url in url_title_dict:
+        title = url_title_dict[url]
+        list_of_links = url_links_dict[url]
+    else:
+        try:
+            page = urllib.request.urlopen(url)
+        except urllib.error.HTTPError:
+            print('Cannot find ' + url + ' in Wikipedia!')
+            return
+        
+        soup = BeautifulSoup(page.read(), 'html.parser')
+        title = soup.find('h1').get_text()
+        list_of_links = []
+        body_content = soup.find(attrs={'class': 'mw-parser-output'})
+        for link in body_content.find_all('a'):
+            potential_link = link.get('href')
+            if link.get('title') != None and '/wiki/' in potential_link and 'http' not in potential_link and ':' not in potential_link:
+                link_url = str('https://en.wikipedia.org' + potential_link)
+                if link_url not in list_of_links:
+                    list_of_links.append(link_url)
+        
+        dump_to_file(url,[title,list_of_links],'wikipedia_storage.txt')
 
     return title, list_of_links
 
 
-def main(start,destination):
+def main(start, destination):
     start_time = datetime.datetime.now()
 
     start_url = str('https://en.wikipedia.org/wiki/' + start)
     destination_url = str('https://en.wikipedia.org/wiki/' + destination)
-    for url in [start_url, destination_url]:
-        try:
-            urllib.request.urlopen(url)
-        except urllib.error.HTTPError:
-            print('Cannot find ' + url + ' in Wikipedia!')
-            return
     
     title, unvisited_links = get_title_and_links(start_url)
+    if unvisited_links == None:
+        return
+
     visited_links = [start_url]
     title_dict = {start_url:start, destination_url:destination}
     link_dict = {}
     for link in unvisited_links:
         link_dict[link] = start_url
 
+    
     while len(unvisited_links) > 0:
+        if destination_url in unvisited_links:
+            break
         first_link = unvisited_links[0]
-        print(first_link)
+        #print(first_link)
         del unvisited_links[0]
         if first_link not in visited_links:
             visited_links.append(first_link)
